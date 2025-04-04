@@ -33,17 +33,17 @@ rating_matrix.to_pickle(RATING_MATRIX_PATH)
 # ------------------------------
 # 2. Content-Based Filtering (TF-IDF on Genres + Cosine Similarity)
 # ------------------------------
-tfidf = TfidfVectorizer(tokenizer=lambda x: x.split('|'))
-tfidf_matrix = tfidf.fit_transform(movies['genres'])
-cos_sim_matrix = cosine_similarity(tfidf_matrix, tfidf_matrix)
-cos_sim_df = pd.DataFrame(cos_sim_matrix, index=movies['movieId'], columns=movies['movieId'])
-cos_sim_df.to_pickle(COS_SIM_PATH)
+# tfidf = TfidfVectorizer(tokenizer=lambda x: x.split('|'))
+# tfidf_matrix = tfidf.fit_transform(movies['genres'])
+# cos_sim_matrix = cosine_similarity(tfidf_matrix, tfidf_matrix)
+# cos_sim_df = pd.DataFrame(cos_sim_matrix, index=movies['movieId'], columns=movies['movieId'])
+# cos_sim_df.to_pickle(COS_SIM_PATH)
 
 
 # ------------------------------
 # 3. Evaluate Content-Based Filtering
 # ------------------------------
-evaluate_content_precision_at_k(ratings, rating_matrix, cos_sim_df, k=10)
+# evaluate_content_precision_at_k(ratings, rating_matrix, cos_sim_df, k=10)
 
 # ------------------------------
 # 4. SVD Decomposition
@@ -56,9 +56,15 @@ train_matrix = train_df.pivot(index='userId', columns='movieId', values='rating'
 
 # Step 3: Train SVD on training matrix
 R_train = train_matrix.values
-U, sigma, Vt = svds(R_train, k=50)
+user_means = np.mean(R_train, axis=1).reshape(-1, 1)
+R_demeaned = R_train - user_means
+
+# Apply SVD
+U, sigma, Vt = svds(R_demeaned, k=50)
 sigma = np.diag(sigma)
-svd_pred_train = np.dot(np.dot(U, sigma), Vt)
+
+# Reconstruct ratings and re-add user means
+svd_pred_train = np.dot(np.dot(U, sigma), Vt) + user_means
 svd_pred_df_train = pd.DataFrame(svd_pred_train, index=train_matrix.index, columns=train_matrix.columns)
 
 # Step 4: Predict ratings for test set
