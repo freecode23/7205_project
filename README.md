@@ -69,7 +69,6 @@ Example:
 
 - Experiment with different SVD `k` values
 - Incorporate user/item metadata (e.g., director, year)
-- Add user interface or deploy via web API
 - Consider item-based collaborative filtering
 
 ---
