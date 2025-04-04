@@ -33,11 +33,11 @@ rating_matrix.to_pickle(RATING_MATRIX_PATH)
 # ------------------------------
 # 2. Content-Based Filtering (TF-IDF on Genres + Cosine Similarity)
 # ------------------------------
-# tfidf = TfidfVectorizer(tokenizer=lambda x: x.split('|'))
-# tfidf_matrix = tfidf.fit_transform(movies['genres'])
-# cos_sim_matrix = cosine_similarity(tfidf_matrix, tfidf_matrix)
-# cos_sim_df = pd.DataFrame(cos_sim_matrix, index=movies['movieId'], columns=movies['movieId'])
-# cos_sim_df.to_pickle(COS_SIM_PATH)
+tfidf = TfidfVectorizer(tokenizer=lambda x: x.split('|'))
+tfidf_matrix = tfidf.fit_transform(movies['genres'])
+cos_sim_matrix = cosine_similarity(tfidf_matrix, tfidf_matrix)
+cos_sim_df = pd.DataFrame(cos_sim_matrix, index=movies['movieId'], columns=movies['movieId'])
+cos_sim_df.to_pickle(COS_SIM_PATH)
 
 
 # ------------------------------
@@ -48,16 +48,22 @@ rating_matrix.to_pickle(RATING_MATRIX_PATH)
 # ------------------------------
 # 4. SVD Decomposition
 # ------------------------------
-# Step 1: Split ratings into train/test
+rating_matrix = ratings.pivot(index='userId', columns='movieId', values='rating')
+
+# Split ratings into train/test
 train_df, test_df = train_test_split(ratings, test_size=0.2, random_state=42)
 
-# Step 2: Build training rating matrix
-train_matrix = train_df.pivot(index='userId', columns='movieId', values='rating').fillna(0)
+# Build training rating matrix WITHOUT fillna(0)
+train_matrix = train_df.pivot(index='userId', columns='movieId', values='rating')
 
-# Step 3: Train SVD on training matrix
+# Prepare matrix for SVD (mean-center with NaN-safe logic)
 R_train = train_matrix.values
-user_means = np.mean(R_train, axis=1).reshape(-1, 1)
-R_demeaned = R_train - user_means
+
+# Compute user means while ignoring NaNs
+user_means = np.nanmean(R_train, axis=1).reshape(-1, 1)
+
+# Subtract user mean only from rated movies (leave NaNs untouched)
+R_demeaned = np.where(np.isnan(R_train), 0, R_train - user_means)
 
 # Apply SVD
 U, sigma, Vt = svds(R_demeaned, k=50)
@@ -67,7 +73,7 @@ sigma = np.diag(sigma)
 svd_pred_train = np.dot(np.dot(U, sigma), Vt) + user_means
 svd_pred_df_train = pd.DataFrame(svd_pred_train, index=train_matrix.index, columns=train_matrix.columns)
 
-# Step 4: Predict ratings for test set
+# Predict ratings for test set
 def predict_rating(row):
     try:
         return svd_pred_df_train.loc[row['userId'], row['movieId']]
@@ -76,13 +82,26 @@ def predict_rating(row):
 
 test_df['predicted'] = test_df.apply(predict_rating, axis=1)
 
-# Step 5: Drop rows where we couldn't predict
+# Drop rows where we couldn't predict
 test_df_clean = test_df.dropna(subset=['predicted'])
+test_df_clean['predicted'] = test_df_clean['predicted'].clip(0.5, 5.0)
+test_df_clean['predicted'] = (2 * test_df_clean['predicted']).round() / 2
 
-# Step 6: Evaluate
+# Evaluate
 rmse = np.sqrt(mean_squared_error(test_df_clean['rating'], test_df_clean['predicted']))
 mae = mean_absolute_error(test_df_clean['rating'], test_df_clean['predicted'])
 
 print("\n📊 SVD Evaluation Results:")
 print(f"✅ RMSE: {rmse:.4f}")
 print(f"✅ MAE:  {mae:.4f}")
+
+
+# Merge test_df_clean with movie titles
+movies_subset = movies.set_index('movieId')
+
+# Select relevant columns
+preview_df = test_df_clean[['userId', 'movieId', 'rating', 'predicted']].copy()
+preview_df['title'] = preview_df['movieId'].map(movies_subset['title'])
+
+# Show first two rows
+print(preview_df[['userId', 'title', 'rating', 'predicted']].head(50))
