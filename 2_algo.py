@@ -43,7 +43,7 @@ cos_sim_df.to_pickle(COS_SIM_PATH)
 # ------------------------------
 # 3. Evaluate Content-Based Filtering
 # ------------------------------
-# evaluate_content_precision_at_k(ratings, rating_matrix, cos_sim_df, k=10)
+evaluate_content_precision_at_k(ratings, rating_matrix, cos_sim_df, k=10)
 
 # ------------------------------
 # 4. SVD Decomposition
