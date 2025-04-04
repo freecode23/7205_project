@@ -1,0 +1,32 @@
+# Byte-compiled / cache files
+__pycache__/
+*.py[cod]
+*.so
+
+# Environment / dependencies
+.env
+.venv/
+*.egg-info/
+.envrc
+.Python
+
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# iCloud ghost files
+*.icloud
+
+# Results / Pickle files / Saved models
+results/
+*.pkl
+*.csv
+!IMDB-Dataset/movies.csv
+!IMDB-Dataset/ratings.csv
+
+# Jupyter Notebook checkpoints (if using notebooks later)
+.ipynb_checkpoints/
+
+# VSCode settings (optional)
+.vscode/
