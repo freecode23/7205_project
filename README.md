@@ -72,8 +72,3 @@ Example:
 - Consider item-based collaborative filtering
 
 ---
-
-## 📝 Acknowledgement
-
-Based on the tutorial by DataFlair:  
-https://data-flair.training/blogs/data-science-r-movie-recommendation-system/
