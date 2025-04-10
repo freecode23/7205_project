@@ -12,7 +12,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import root_mean_squared_error, mean_absolute_error
 
-from helper.evaluate import get_content_score, evaluate_scaled_predictions_precision
+from helper.evaluate import get_content_score
 
 # For SVD
 from surprise.model_selection import train_test_split
@@ -73,25 +73,26 @@ train_df = pd.DataFrame(trainset.build_testset(), columns=['userId', 'movieId', 
 test_df = pd.DataFrame(testset, columns=['userId', 'movieId', 'rating'])
 
 # Apply get_content_score to your test set
-test_df['content_pred'] = test_df.progress_apply(
+test_df['predicted_raw'] = test_df.progress_apply(
     lambda row: get_content_score(row['userId'], row['movieId'], train_df, cos_sim_df),
     axis=1
 )
 
 # Drop predictions that couldn't be made.
-test_df_clean = test_df.dropna(subset=['content_pred'])
+test_df_clean = test_df.dropna(subset=['predicted_raw'])
 
 # ------------------------------
 # 4. Rescales predictions to match 1.0–5.0 rating scale
 # ------------------------------
-min_pred = test_df_clean['content_pred'].min()
-max_pred = test_df_clean['content_pred'].max()
-test_df_clean['content_pred_scaled'] = 4 * (test_df_clean['content_pred'] - min_pred) / (max_pred - min_pred) + 1
+min_pred = test_df_clean['predicted_raw'].min()
+max_pred = test_df_clean['predicted_raw'].max()
+test_df_clean['predicted'] = 4 * (test_df_clean['predicted_raw'] - min_pred) / (max_pred - min_pred) + 1
+
 
 # Save the df with prediction column.
 test_df_clean.to_pickle(PRED_PATH)
-rmse_scaled = root_mean_squared_error(test_df_clean['rating'], test_df_clean['content_pred_scaled'])
-mae_scaled = mean_absolute_error(test_df_clean['rating'], test_df_clean['content_pred_scaled'])
+rmse_scaled = root_mean_squared_error(test_df_clean['rating'], test_df_clean['predicted'])
+mae_scaled = mean_absolute_error(test_df_clean['rating'], test_df_clean['predicted'])
 
 print(f"\n📊 Scaled Content-Based Evaluation:")
 print(f"✅ RMSE (scaled): {rmse_scaled:.4f}")
@@ -106,12 +107,12 @@ movies_subset = movies.set_index('movieId')
 test_df_clean['title'] = test_df_clean['movieId'].map(movies_subset['title'])
 
 # Round predicted rating to nearest 0.5 if you want to match SVD-style display
-test_df_clean['content_pred_rounded'] = (2 * test_df_clean['content_pred_scaled']).round() / 2
-test_df_clean['content_pred_rounded'] = test_df_clean['content_pred_rounded'].clip(0.5, 5.0)
+test_df_clean['predicted'] = (2 * test_df_clean['predicted']).round() / 2
+test_df_clean['predicted'] = test_df_clean['predicted'].clip(0.5, 5.0)
 
 
 # Preview first few predictions
-preview = test_df_clean[['userId', 'title', 'rating', 'content_pred_rounded']].head(10)
+preview = test_df_clean[['userId', 'title', 'rating', 'predicted']].head(10)
 
 print("\n🎬 Preview of Real vs Predicted Ratings (Content-Based):")
 print(preview.to_string(index=False))

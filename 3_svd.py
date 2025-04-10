@@ -3,11 +3,6 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-# For Content-Based filtering
-from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.feature_extraction.text import TfidfVectorizer
-from helper.evaluate import evaluate_content_precision_at_k, get_content_score
-
 # For SVD
 from surprise.model_selection import train_test_split
 from surprise import Dataset, Reader, SVD
@@ -40,6 +35,7 @@ COS_SIM_PATH = os.path.join(RESULTS_PATH, "cos_sim_df.pkl")
 SVD_PRED_PATH = os.path.join(RESULTS_PATH, "svd_pred_df.pkl")
 
 
+
 # ------------------------------
 # 2. Prepare data for Surprise
 # ------------------------------
@@ -59,8 +55,7 @@ param_grid = {
 }
 print("Setting up Grid Search:")
 # Set up GridSearchCV
-# gs = GridSearchCV(SVDpp, param_grid, measures=['rmse', 'mae'], cv=5, joblib_verbose=2)
-gs = GridSearchCV(VerboseSVDpp, param_grid, measures=['rmse', 'mae'], cv=5, joblib_verbose=2)
+gs = GridSearchCV(SVD, param_grid, measures=['rmse', 'mae'], cv=5, joblib_verbose=2, n_jobs=-1) 
 
 gs.fit(data)
 
@@ -94,6 +89,7 @@ pred_df['predicted'] = pred_df['predicted'].clip(0.5, 5.0)
 # Merge with movie titles
 movies_subset = movies.set_index('movieId')
 pred_df['title'] = pred_df['movieId'].map(movies_subset['title'])
+pred_df.to_pickle(SVD_PRED_PATH)
 
 # Show first few predictions
 print("\n🎬 Preview of Real vs Predicted Ratings:")

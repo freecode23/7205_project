@@ -1,70 +1,94 @@
+import os
 import pandas as pd
 import numpy as np
-import os
-# ------------------------------
-# 0. Load movie data and user rating data
-# ------------------------------
-MOVIES_FILEPATH = './IMDB-Dataset/movies.csv'
-RATINGS_FILEPATH = './IMDB-Dataset/ratings.csv'
-movies = pd.read_csv(MOVIES_FILEPATH)
-ratings = pd.read_csv(RATINGS_FILEPATH)
+import matplotlib.pyplot as plt
+
+from tqdm import tqdm
+tqdm.pandas()  # enables .progress_apply()
 
 
 # ------------------------------
-# 1. Load TFIDF and svd result
+# 1. Define Path to load SVD or Content Filtering Result
 # ------------------------------
 RESULTS_PATH = "./results"
-RATING_MATRIX_PATH = os.path.join(RESULTS_PATH, "rating_matrix.pkl")
-COS_SIM_PATH = os.path.join(RESULTS_PATH, "cos_sim_df.pkl")
-SVD_PRED_PATH = os.path.join(RESULTS_PATH, "svd_pred_df.pkl")
+os.makedirs(RESULTS_PATH, exist_ok=True)
 
-rating_matrix = pd.read_pickle(RATING_MATRIX_PATH)
-cos_sim_df = pd.read_pickle(COS_SIM_PATH)
-svd_pred_df = pd.read_pickle(SVD_PRED_PATH)
+PRED_PATH = os.path.join(RESULTS_PATH, "content_pred_df.pkl")
+PRED_PATH = os.path.join(RESULTS_PATH, "svd_pred_df.pkl")
+test_df_clean = pd.read_pickle(PRED_PATH)
 
 # ------------------------------
-# 2. Get rated and unrated movies
+# 2. Make top 10 recommendation for a user and see the actual rating.
 # ------------------------------
-user_id = 1
-user_ratings = rating_matrix.loc[user_id]
-rated_movie_ids = user_ratings[user_ratings > 0].index
-unrated_movies = user_ratings[user_ratings == 0].index
+# 1. Pick a user with many ratings
+user_id = test_df_clean['userId'].value_counts().idxmax()
+
+# 2. Get all the movies rated by this user
+user_data_test = test_df_clean[test_df_clean['userId'] == user_id]
+
+# 3. From those, pick the ones they rated highly (e.g., ≥ 4.0)
+high_rated = user_data_test[user_data_test['rating'] >= 4.0]
+print("\nHigh_rated Movies\n", high_rated)
+
+
+# 4. Select top-k recommendations for the user
+top_k = 10  # Can change to other numbers based on your choice
+top_recs = test_df_clean[test_df_clean['userId'] == user_id].sort_values(by='predicted', ascending=False).head(top_k)
+print("\nTop-k Recommended Movies\n", top_recs)
 
 
 # ------------------------------
-# 3. Get Content-based (TF-IDF) scores for unrated movies
+# 5. Calculate Precision and Recall fpr a single user.
 # ------------------------------
-# Score function
-def content_score(movie_id):
-    sim_scores = cos_sim_df.loc[movie_id, rated_movie_ids]
-    user_scores = user_ratings.loc[rated_movie_ids]
-    return np.dot(sim_scores, user_scores)
+# 5.1. Precision: of the top-k recommendations, how many have rating ≥ 4.0 (i.e., are relevant)?
+top_recs_vals = top_recs['movieId'].values
+high_rated_vals = high_rated['movieId'].values
+intersection = np.intersect1d(top_recs_vals, high_rated_vals)
+print("\nTop rev vals\n", top_recs_vals)
 
-# Generate content-based scores
-content_scores = {movie_id: content_score(movie_id) for movie_id in unrated_movies}
-content_scores_series = pd.Series(content_scores)
+# Precision = (Number of relevant recommended items) / (Total recommended items)
+precision = len(intersection) / len(top_recs_vals)
 
-# ------------------------------
-# 4. Get SVD predicted scores for unrated movies
-# ------------------------------
-svd_scores_series = svd_pred_df.loc[user_id, unrated_movies]
+# Print Precision and Recall
+print(f"\n🔍 Precision: {precision:.4f}")
+
 
 # ------------------------------
-# 5. Compute scores
+# 6. Calculate Precision and Recall for each user
 # ------------------------------
-hybrid_scores = 0.5 * svd_scores_series + 0.5 * content_scores_series
-top_hybrid = hybrid_scores.sort_values(ascending=False).head(10)
-top_hybrid.columns = ['movieId', 'score', 'title']
+user_ids = test_df_clean['userId'].unique()  # Get all unique users
+precision_scores = []
+recall_scores = []
 
-# ------------------------------
-# 6. Display Results
-# ------------------------------
-movies_subset = movies.set_index('movieId')
-top_hybrid = top_hybrid.rename_axis('movieId').reset_index()
-top_hybrid['title'] = top_hybrid['movieId'].map(movies_subset['title'])
-print("SVD score range:", svd_scores_series.min(), "to", svd_scores_series.max())
-print("Content score range:", content_scores_series.min(), "to", content_scores_series.max())
+# Loop over each user to compute precision and recall
+for user_id in user_ids:
+    # Get all the movies rated by this user
+    user_data_test = test_df_clean[test_df_clean['userId'] == user_id]
 
-print("\n🎬 Top 10 Hybrid Recommendations for User", user_id)
-top_hybrid.columns = ['movieId', 'score', 'title']
-print(top_hybrid[['movieId', 'title', 'score']])
+    # Get movies with a rating ≥ 4.0 (highly rated)
+    high_rated = user_data_test[user_data_test['rating'] >= 4.0]
+
+    # Get top-k recommended movies for this user
+    top_k = 10  # Can change this number based on your requirement
+    top_recs = test_df_clean[test_df_clean['userId'] == user_id].sort_values(by='predicted', ascending=False).head(top_k)
+
+    # Precision: of the top-k recommendations, how many have rating ≥ 4.0 (i.e., are relevant)?
+    recommended_movies = top_recs['movieId'].values
+    relevant_movies = high_rated['movieId'].values
+    intersection = np.intersect1d(recommended_movies, relevant_movies)
+    
+    # Precision = (Number of relevant recommended items) / (Total recommended items)
+    precision = len(intersection) / len(recommended_movies)
+
+
+    # Append the precision and recall for this user
+    precision_scores.append(precision)
+
+
+# Calculate the average precision and recall over all users
+avg_precision = np.mean(precision_scores)
+
+
+# Print the results
+print(f"\n🔍 Average Precision: {avg_precision:.4f}")
+
