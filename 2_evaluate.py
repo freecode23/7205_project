@@ -6,7 +6,9 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 tqdm.pandas()  # enables .progress_apply()
 
-
+# This program evaluate:
+# model 3: Content-Based Filtering and model 
+# model 4: SVD (Collaborative Filtering)
 # ------------------------------
 # 1. Define Path to load SVD or Content Filtering Result
 # ------------------------------

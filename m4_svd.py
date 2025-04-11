@@ -34,8 +34,6 @@ RATING_MATRIX_PATH = os.path.join(RESULTS_PATH, "rating_matrix.pkl")
 COS_SIM_PATH = os.path.join(RESULTS_PATH, "cos_sim_df.pkl")
 SVD_PRED_PATH = os.path.join(RESULTS_PATH, "svd_pred_df.pkl")
 
-
-
 # ------------------------------
 # 2. Prepare data for Surprise
 # ------------------------------
