@@ -1,93 +1,116 @@
 import os
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
+import tensorflow as tf
+print(tf.__version__)
 
-from tqdm import tqdm
-tqdm.pandas()  # enables .progress_apply()
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input, Embedding, Flatten, Dense, Dropout
+from tensorflow.keras.optimizers import Adam
+from sklearn.model_selection import train_test_split
 
+# Load the movie data and ratings data
+MOVIES_FILEPATH = './IMDB-Dataset/movies.csv'
+RATINGS_FILEPATH = './IMDB-Dataset/ratings.csv'
+movies = pd.read_csv(MOVIES_FILEPATH)
+ratings = pd.read_csv(RATINGS_FILEPATH)
+
+# Map original userId and movieId to new continuous indices
+user_mapper = {old: new for new, old in enumerate(ratings['userId'].unique())}
+movie_mapper = {old: new for new, old in enumerate(ratings['movieId'].unique())}
+
+# Add mapped indices to the ratings DataFrame
+ratings['user_idx'] = ratings['userId'].map(user_mapper)
+ratings['movie_idx'] = ratings['movieId'].map(movie_mapper)
+
+# **Add mapped indices to the movies DataFrame as well**
+movies['movie_idx'] = movies['movieId'].map(movie_mapper)
+
+
+# Preprocessing the data using mapped indices
+user_ids = ratings['user_idx'].values
+movie_ids = ratings['movie_idx'].values
+ratings_values = ratings['rating'].values
+
+# Get number of unique users and movies after mapping
+num_users = ratings['user_idx'].nunique()
+num_movies = ratings['movie_idx'].nunique()
+
+# Normalize the ratings to [0, 1]
+ratings_values = ratings_values / 5.0
+
+# Split data into train and test sets (80-20 split)
+X_train, X_test, y_train, y_test = train_test_split(
+    list(zip(user_ids, movie_ids)), ratings_values, test_size=0.2, random_state=42
+)
+
+# Define the Neural Network model
+embedding_size = 50  # Size of the embeddings for users and movies
+
+# User embedding
+user_input = Input(shape=(1,), name='user')
+user_embedding = Embedding(input_dim=num_users, output_dim=embedding_size)(user_input)
+user_embedding = Flatten()(user_embedding)
+
+# Movie embedding
+movie_input = Input(shape=(1,), name='movie')
+movie_embedding = Embedding(input_dim=num_movies, output_dim=embedding_size)(movie_input)
+movie_embedding = Flatten()(movie_embedding)
+
+# Concatenate user and movie embeddings
+concat = tf.keras.layers.concatenate([user_embedding, movie_embedding])
+
+# Add fully connected layers
+dense = Dense(128, activation='relu')(concat)
+dense = Dropout(0.2)(dense)
+dense = Dense(64, activation='relu')(dense)
+output = Dense(1, activation='sigmoid')(dense)  # Use sigmoid for normalization to 0-1 range
+
+# Compile the model (using the correct learning_rate parameter)
+model = Model(inputs=[user_input, movie_input], outputs=output)
+model.compile(optimizer=Adam(learning_rate=0.001), loss='mean_squared_error', metrics=['mae'])
+
+# Train the model using mapped indices
+model.fit(
+    [np.array([user for user, movie in X_train]), np.array([movie for user, movie in X_train])],
+    y_train, epochs=10, batch_size=256,
+    validation_data=(
+        [np.array([user for user, movie in X_test]), np.array([movie for user, movie in X_test])],
+        y_test
+    )
+)
 
 # ------------------------------
-# 1. Define Path to load SVD or Content Filtering Result
+# 5. Make predictions for the test set
 # ------------------------------
-RESULTS_PATH = "./results"
-os.makedirs(RESULTS_PATH, exist_ok=True)
-
-PRED_PATH = os.path.join(RESULTS_PATH, "content_pred_df.pkl")
-PRED_PATH = os.path.join(RESULTS_PATH, "svd_pred_df.pkl")
-test_df_clean = pd.read_pickle(PRED_PATH)
+y_pred = model.predict([np.array([user for user, movie in X_test]), np.array([movie for user, movie in X_test])])
 
 # ------------------------------
-# 2. Make top 10 recommendation for a user and see the actual rating.
+# 6. Calculate MAE for evaluation
 # ------------------------------
-# 1. Pick a user with many ratings
-user_id = test_df_clean['userId'].value_counts().idxmax()
+y_pred_rescaled = y_pred * 5.0
+y_test_rescaled = y_test * 5.0
 
-# 2. Get all the movies rated by this user
-user_data_test = test_df_clean[test_df_clean['userId'] == user_id]
-
-# 3. From those, pick the ones they rated highly (e.g., ≥ 4.0)
-high_rated = user_data_test[user_data_test['rating'] >= 4.0]
-print("\nHigh_rated Movies\n", high_rated)
-
-
-# 4. Select top-k recommendations for the user
-top_k = 10  # Can change to other numbers based on your choice
-top_recs = test_df_clean[test_df_clean['userId'] == user_id].sort_values(by='predicted', ascending=False).head(top_k)
-print("\nTop-k Recommended Movies\n", top_recs)
-
+mae = np.mean(np.abs(y_test_rescaled - y_pred_rescaled))
+print(f"Mean Absolute Error (MAE) on Test Set: {mae:.4f}")
 
 # ------------------------------
-# 5. Calculate Precision and Recall fpr a single user.
+# 7. Create predictions dataframe
 # ------------------------------
-# 5.1. Precision: of the top-k recommendations, how many have rating ≥ 4.0 (i.e., are relevant)?
-top_recs_vals = top_recs['movieId'].values
-high_rated_vals = high_rated['movieId'].values
-intersection = np.intersect1d(top_recs_vals, high_rated_vals)
-print("\nTop rev vals\n", top_recs_vals)
+predictions_df = pd.DataFrame({
+    'userId': [user for user, movie in X_test],
+    'movieId': [movie for user, movie in X_test],
+    'actual_rating': y_test_rescaled,
+    'predicted_rating': y_pred_rescaled.flatten(),
+})
 
-# Precision = (Number of relevant recommended items) / (Total recommended items)
-precision = len(intersection) / len(top_recs_vals)
+# If needed, merge with movies DataFrame.
+# Note: The movies DataFrame still contains the original movieId.
+# You can create a reverse mapping for movie ids if necessary.
+# For simplicity, here we merge on the mapped movieId if movies DataFrame was updated accordingly.
+predictions_df = predictions_df.merge(movies[['movie_idx', 'title']], left_on='movieId', right_on='movie_idx', how='left')
 
-# Print Precision and Recall
-print(f"\n🔍 Precision: {precision:.4f}")
+print("\n🎬 Preview of Real vs Predicted Ratings:")
+print(predictions_df[['userId', 'title', 'actual_rating', 'predicted_rating']].head(10))
 
-
-# ------------------------------
-# 6. Calculate Precision and Recall for each user
-# ------------------------------
-user_ids = test_df_clean['userId'].unique()  # Get all unique users
-precision_scores = []
-recall_scores = []
-
-# Loop over each user to compute precision and recall
-for user_id in user_ids:
-    # Get all the movies rated by this user
-    user_data_test = test_df_clean[test_df_clean['userId'] == user_id]
-
-    # Get movies with a rating ≥ 4.0 (highly rated)
-    high_rated = user_data_test[user_data_test['rating'] >= 4.0]
-
-    # Get top-k recommended movies for this user
-    top_k = 10  # Can change this number based on your requirement
-    top_recs = test_df_clean[test_df_clean['userId'] == user_id].sort_values(by='predicted', ascending=False).head(top_k)
-
-    # Precision: of the top-k recommendations, how many have rating ≥ 4.0 (i.e., are relevant)?
-    recommended_movies = top_recs['movieId'].values
-    relevant_movies = high_rated['movieId'].values
-    intersection = np.intersect1d(recommended_movies, relevant_movies)
-    
-    # Precision = (Number of relevant recommended items) / (Total recommended items)
-    precision = len(intersection) / len(recommended_movies)
-
-
-    # Append the precision and recall for this user
-    precision_scores.append(precision)
-
-
-# Calculate the average precision and recall over all users
-avg_precision = np.mean(precision_scores)
-
-
-# Print the results
-print(f"\n🔍 Average Precision: {avg_precision:.4f}")
+predictions_df.to_pickle("./results/nn_pred_df.pkl")
