@@ -1,9 +1,19 @@
 import numpy as np
 from tqdm import tqdm
 
+def dcg_at_k(relevance, k):
+    relevance = np.asfarray(relevance)[:k]
+    if relevance.size:
+        return relevance[0] + np.sum(relevance[1:] / np.log2(np.arange(2, relevance.size + 1)))
+    return 0.0
 
+def ndcg_at_k(recommended, relevant, k):
+    relevance = [1 if item in relevant else 0 for item in recommended[:k]]
+    dcg = dcg_at_k(relevance, k)
+    ideal_dcg = dcg_at_k(sorted(relevance, reverse=True), k)
+    return dcg / ideal_dcg if ideal_dcg > 0 else 0.0
 
-def get_content_score(user_id, target_movie_id, train_df, sim_df):
+def get_rating(user_id, target_movie_id, train_df, sim_df):
     """
     For a given (user_id, target_movie_id):
     Get all movies the user has rated

@@ -1,19 +1,10 @@
 import os
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
 
 # For SVD
-from surprise.model_selection import train_test_split
 from surprise import Dataset, Reader, SVD
-from surprise import SVDpp
 from surprise.model_selection import GridSearchCV
-
-
-class VerboseSVDpp(SVDpp):
-    def __init__(self, **kwargs):
-        kwargs['verbose'] = True  # Force verbosity
-        super().__init__(**kwargs)
+from surprise import dump
 
 
 # ------------------------------
@@ -21,6 +12,9 @@ class VerboseSVDpp(SVDpp):
 # ------------------------------
 MOVIES_FILEPATH = './IMDB-Dataset/movies.csv'
 RATINGS_FILEPATH = './IMDB-Dataset/ratings.csv'
+# MOVIES_FILEPATH = './MovieLens-Dataset/movies.csv'
+# RATINGS_FILEPATH = './MovieLens-Dataset/ratings.csv'
+
 movies = pd.read_csv(MOVIES_FILEPATH)
 ratings = pd.read_csv(RATINGS_FILEPATH)
 
@@ -29,18 +23,27 @@ ratings = pd.read_csv(RATINGS_FILEPATH)
 # ------------------------------
 RESULTS_PATH = "./results"
 os.makedirs(RESULTS_PATH, exist_ok=True)
-
-RATING_MATRIX_PATH = os.path.join(RESULTS_PATH, "rating_matrix.pkl")
-COS_SIM_PATH = os.path.join(RESULTS_PATH, "cos_sim_df.pkl")
 SVD_PRED_PATH = os.path.join(RESULTS_PATH, "svd_pred_df.pkl")
+MODEL_PATH = os.path.join(RESULTS_PATH, "svd_model.pkl")
 
 # ------------------------------
 # 2. Prepare data for Surprise
 # ------------------------------
-# Prepare data for Surprise
-reader = Reader(rating_scale=(0.5, 5.0))
-data = Dataset.load_from_df(ratings[['userId', 'movieId', 'rating']], reader)
+# Split trainset and testset.
+print("Split trainset and testset..")
+train_df = ratings.sample(frac=0.8, random_state=42)
+test_df = ratings.drop(train_df.index)
 
+# Convert to dataset for GridSearch
+print("Convert to Dataset..")
+reader = Reader(rating_scale=(0.5, 5.0))
+train_data = Dataset.load_from_df(train_df[['userId', 'movieId', 'rating']], reader)
+test_data = Dataset.load_from_df(test_df[['userId', 'movieId', 'rating']], reader)
+
+# Convert to Surprise train and testsest
+print("Convert to Surprise train and testset..")
+trainset = train_data.build_full_trainset()
+testset = list(zip(test_df['userId'], test_df['movieId'], test_df['rating']))
 
 # ------------------------------
 # 3. Grid Search for Best SVD Hyperparameters
@@ -52,10 +55,10 @@ param_grid = {
     'lr_all': [0.005, 0.007, 0.01, 0.015]   # Learning rate: This controls how fast the model updates weights during training.
 }
 print("Setting up Grid Search:")
-# Set up GridSearchCV
-gs = GridSearchCV(SVD, param_grid, measures=['rmse', 'mae'], cv=5, joblib_verbose=2, n_jobs=-1) 
 
-gs.fit(data)
+# Set up GridSearchCV
+gs = GridSearchCV(SVD, param_grid, measures=['rmse', 'mae'], cv=5, joblib_verbose=3, n_jobs=-1) 
+gs.fit(train_data)
 
 # Best score and params
 print("\n🔍 Best Grid Search Results:")
@@ -66,12 +69,11 @@ print(f"📌 Best Params: {gs.best_params['rmse']}")
 # ------------------------------
 # 4. Preview Predictions vs Actual
 # ------------------------------
-
-# Use a reasonable value for k to preview predictions
+# Use the best param to predict the test dataset.
 best_params = gs.best_params['rmse']
-algo = SVDpp(**best_params)
-trainset, testset = train_test_split(data, test_size=0.2, random_state=42)
+algo = SVD(**best_params)
 algo.fit(trainset)
+dump.dump(MODEL_PATH, algo=algo)
 predictions = algo.test(testset)
 
 # Convert predictions to DataFrame
@@ -84,11 +86,11 @@ pred_df = pd.DataFrame([{
 } for pred in predictions])
 pred_df['predicted'] = pred_df['predicted'].clip(0.5, 5.0)
 
-# Merge with movie titles
+# Merge prediction with titles and save the df.
 movies_subset = movies.set_index('movieId')
 pred_df['title'] = pred_df['movieId'].map(movies_subset['title'])
 pred_df.to_pickle(SVD_PRED_PATH)
 
-# Show first few predictions
+# Show first few predictions.
 print("\n🎬 Preview of Real vs Predicted Ratings:")
 print(pred_df[['userId', 'title', 'rating', 'predicted']].head(10))

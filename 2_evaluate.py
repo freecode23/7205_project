@@ -2,9 +2,10 @@ import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-
+from surprise import dump
+from helper.evaluate import dcg_at_k, ndcg_at_k
 from tqdm import tqdm
-tqdm.pandas()  # enables .progress_apply()
+tqdm.pandas()
 
 # This program evaluate:
 # model 3: Content-Based Filtering and model 
@@ -13,84 +14,65 @@ tqdm.pandas()  # enables .progress_apply()
 # 1. Define Path to load SVD or Content Filtering Result
 # ------------------------------
 RESULTS_PATH = "./results"
-os.makedirs(RESULTS_PATH, exist_ok=True)
-
+RATINGS_FILEPATH = './IMDB-Dataset/ratings.csv'
 PRED_PATH = os.path.join(RESULTS_PATH, "content_pred_df.pkl")
-PRED_PATH = os.path.join(RESULTS_PATH, "svd_pred_df.pkl")
+# PRED_PATH = os.path.join(RESULTS_PATH, "svd_pred_df.pkl")
+K=10
+
+
+# ------------------------------
+# 2. Get train and test df with predicted ratings.
+# ------------------------------
+ratings = pd.read_csv(RATINGS_FILEPATH)
 test_df_clean = pd.read_pickle(PRED_PATH)
 
+
 # ------------------------------
-# 2. Make top 10 recommendation for a user and see the actual rating.
+# 3. Get train and test df with predicted ratings.
 # ------------------------------
-# 1. Pick a user with many ratings
-user_id = test_df_clean['userId'].value_counts().idxmax()
-
-# 2. Get all the movies rated by this user
-user_data_test = test_df_clean[test_df_clean['userId'] == user_id]
-
-# 3. From those, pick the ones they rated highly (e.g., ≥ 4.0)
-high_rated = user_data_test[user_data_test['rating'] >= 4.0]
-print("\nHigh_rated Movies\n", high_rated)
-
-
-# 4. Select top-k recommendations for the user
-top_k = 10  # Can change to other numbers based on your choice
-top_recs = test_df_clean[test_df_clean['userId'] == user_id].sort_values(by='predicted', ascending=False).head(top_k)
-print("\nTop-k Recommended Movies\n", top_recs)
+all_movie_ids = set(ratings['movieId'].unique())
+user_ids = test_df_clean['userId'].unique()
+# user_ids = [2]
 
 
 # ------------------------------
-# 5. Calculate Precision and Recall fpr a single user.
+# 4. Calculate HR@K with sampled ranking for each user.
 # ------------------------------
-# 5.1. Precision: of the top-k recommendations, how many have rating ≥ 4.0 (i.e., are relevant)?
-top_recs_vals = top_recs['movieId'].values
-high_rated_vals = high_rated['movieId'].values
-intersection = np.intersect1d(top_recs_vals, high_rated_vals)
-print("\nTop rev vals\n", top_recs_vals)
+hit_scores = []
+ndcg_scores = []
+print(f"Evaluating sampled HR@{K}...")
+for user_id in tqdm(user_ids):
 
-# Precision = (Number of relevant recommended items) / (Total recommended items)
-precision = len(intersection) / len(top_recs_vals)
-
-# Print Precision and Recall
-print(f"\n🔍 Precision: {precision:.4f}")
-
-
-# ------------------------------
-# 6. Calculate Precision and Recall for each user
-# ------------------------------
-user_ids = test_df_clean['userId'].unique()  # Get all unique users
-precision_scores = []
-recall_scores = []
-
-# Loop over each user to compute precision and recall
-for user_id in user_ids:
-    # Get all the movies rated by this user
+    # Get test data for this user
     user_data_test = test_df_clean[test_df_clean['userId'] == user_id]
+    if user_data_test.empty:
+        continue
 
-    # Get movies with a rating ≥ 4.0 (highly rated)
+    # Get "relevant" movies actual user ratings ≥ 4.0 (ground truth)
     high_rated = user_data_test[user_data_test['rating'] >= 4.0]
-
-    # Get top-k recommended movies for this user
-    top_k = 10  # Can change this number based on your requirement
-    top_recs = test_df_clean[test_df_clean['userId'] == user_id].sort_values(by='predicted', ascending=False).head(top_k)
-
-    # Precision: of the top-k recommendations, how many have rating ≥ 4.0 (i.e., are relevant)?
-    recommended_movies = top_recs['movieId'].values
-    relevant_movies = high_rated['movieId'].values
-    intersection = np.intersect1d(recommended_movies, relevant_movies)
+    ground_truth_high_rated = high_rated['movieId'].values
+    if len(ground_truth_high_rated) == 0:
+        continue
     
-    # Precision = (Number of relevant recommended items) / (Total recommended items)
-    precision = len(intersection) / len(recommended_movies)
+    # Get Top-K recommended movies based on predicted rating (model’s guesses)
+    top_k = user_data_test.sort_values(by='predicted', ascending=False).head(K)
+    recommended_movies = top_k['movieId'].values
 
+    # Hit@K: was at least one relevant item in top-K?
+    # Print detailed debug info
+    # print(f"\n👤 User ID = {user_id}")
+    # print("🎯 Ground-truth high-rated (actual rating ≥ 4.0):")
+    # print(user_data_test[user_data_test['rating'] >= 4.0][['movieId', 'rating']].to_string(index=False))
 
-    # Append the precision and recall for this user
-    precision_scores.append(precision)
+    # print("\n🤖 Top-K Recommended Movies (sorted by predicted rating):")
+    # print(top_k[['movieId', 'rating', 'predicted']].to_string(index=False))
+    hit = 1 if np.intersect1d(recommended_movies, ground_truth_high_rated).size > 0 else 0
+    hit_scores.append(hit)
 
+    # NDCG@K: how well are the relevant items ranked?
+    ndcg = ndcg_at_k(recommended_movies, ground_truth_high_rated, K)
+    ndcg_scores.append(ndcg)
 
-# Calculate the average precision and recall over all users
-avg_precision = np.mean(precision_scores)
-
-
-# Print the results
-print(f"\n🔍 Average Precision: {avg_precision:.4f}")
-
+# Sampled HR@K
+print(f"\n✅ Sampled HR@{K}: {np.mean(hit_scores):.4f}")
+print(f"✅ Sampled NDCG@{K}: {np.mean(ndcg_scores):.4f}")
