@@ -26,7 +26,6 @@ ratings['movie_idx'] = ratings['movieId'].map(movie_mapper)
 # **Add mapped indices to the movies DataFrame as well**
 movies['movie_idx'] = movies['movieId'].map(movie_mapper)
 
-
 # Preprocessing the data using mapped indices
 user_ids = ratings['user_idx'].values
 movie_ids = ratings['movie_idx'].values

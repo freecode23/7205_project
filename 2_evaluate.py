@@ -11,7 +11,7 @@ tqdm.pandas()
 # model 3: Content-Based Filtering and model 
 # model 4: SVD (Collaborative Filtering)
 # ------------------------------
-# 1. Define Path to load SVD or Content Filtering Result
+# 1. Define Path to load Content Filtering, SVD, or NN Result
 # ------------------------------
 RESULTS_PATH = "./results"
 RATINGS_FILEPATH = './IMDB-Dataset/ratings.csv'
@@ -19,24 +19,19 @@ PRED_PATH = os.path.join(RESULTS_PATH, "content_pred_df.pkl")
 # PRED_PATH = os.path.join(RESULTS_PATH, "svd_pred_df.pkl")
 K=10
 
+# ------------------------------
+# 2. Get test df, all movie ids, and user ids.
+# ------------------------------
+test_df = pd.read_pickle(PRED_PATH)
 
-# ------------------------------
-# 2. Get train and test df with predicted ratings.
-# ------------------------------
 ratings = pd.read_csv(RATINGS_FILEPATH)
-test_df_clean = pd.read_pickle(PRED_PATH)
-
-
-# ------------------------------
-# 3. Get train and test df with predicted ratings.
-# ------------------------------
 all_movie_ids = set(ratings['movieId'].unique())
-user_ids = test_df_clean['userId'].unique()
-# user_ids = [2]
+
+user_ids = test_df['userId'].unique()
 
 
 # ------------------------------
-# 4. Calculate HR@K with sampled ranking for each user.
+# 4. Calculate HR@K and NDCG@K with sampled ranking for each user.
 # ------------------------------
 hit_scores = []
 ndcg_scores = []
@@ -44,7 +39,7 @@ print(f"Evaluating sampled HR@{K}...")
 for user_id in tqdm(user_ids):
 
     # Get test data for this user
-    user_data_test = test_df_clean[test_df_clean['userId'] == user_id]
+    user_data_test = test_df[test_df['userId'] == user_id]
     if user_data_test.empty:
         continue
 
