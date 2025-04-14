@@ -2,6 +2,9 @@ import os
 import pandas as pd
 import numpy as np
 import tensorflow as tf
+from tqdm import tqdm
+from tqdm import tqdm
+from helper.evaluate import ndcg_at_k
 print(tf.__version__)
 
 from tensorflow.keras.models import Model
@@ -31,10 +34,10 @@ train_df = pd.read_csv('./results/train.csv')
 test_df = pd.read_csv('./results/test.csv')
 
 # Apply same user/movie mapping
-train_df['user_idx'] = train_df['userId'].map(user_mapper)
-train_df['movie_idx'] = train_df['movieId'].map(movie_mapper)
-test_df['user_idx'] = test_df['userId'].map(user_mapper)
-test_df['movie_idx'] = test_df['movieId'].map(movie_mapper)
+#train_df['user_idx'] = train_df['userId'].map(user_mapper)
+#train_df['movie_idx'] = train_df['movieId'].map(movie_mapper)
+#test_df['user_idx'] = test_df['userId'].map(user_mapper)
+#test_df['movie_idx'] = test_df['movieId'].map(movie_mapper)
 
 # Normalize ratings to 0–1
 train_df['rating_norm'] = train_df['rating'] / 5.0
@@ -98,25 +101,84 @@ y_pred_rescaled = y_pred * 5.0
 y_test_rescaled = y_test * 5.0
 
 mae = np.mean(np.abs(y_test_rescaled - y_pred_rescaled))
+rmse = np.sqrt(np.mean((y_test_rescaled - y_pred_rescaled)**2))
+
 print(f"Mean Absolute Error (MAE) on Test Set: {mae:.4f}")
+print(f"Root Mean Squared Error (RMSE) on Test Set: {rmse:.4f}")
 
 # ------------------------------
 # 7. Create predictions dataframe
 # ------------------------------
+#predictions_df = pd.DataFrame({
+ #   'userId': [user for user, movie in X_test],
+  #  'movieId': [movie for user, movie in X_test],
+   # 'actual_rating': y_test_rescaled,
+    #'predicted_rating': y_pred_rescaled.flatten(),
+#})
+
+# 创建预测结果 DataFrame（nn 模型）
 predictions_df = pd.DataFrame({
-    'userId': [user for user, movie in X_test],
-    'movieId': [movie for user, movie in X_test],
+    'user_idx': [user for user, movie in X_test],
+    'movie_idx': [movie for user, movie in X_test],
     'actual_rating': y_test_rescaled,
     'predicted_rating': y_pred_rescaled.flatten(),
 })
+
+
+test_df = predictions_df.copy()
+
+# ------------------------------
+# 8. Evaluate HR@K and NDCG@K on the test set
+# ------------------------------
+# 这里假设我们已经生成了 predictions_df
+# 如果你之前生成的 DataFrame 是 predictions_df，就可以直接使用；否则，可以重新命名，例如：
+test_df = predictions_df.copy()
+
+# 定义 Top-K 的值
+K = 10
+
+# 获取所有测试用户的ID
+user_ids = test_df['user_idx'].unique()
+
+hit_scores = []
+ndcg_scores = []
+
+print(f"Evaluating sampled HR@{K}...")
+for user_id in tqdm(user_ids):
+    # 获取该用户在测试集中的数据
+    user_data_test = test_df[test_df['user_idx'] == user_id]
+    if user_data_test.empty:
+        continue
+
+    # 定义 ground truth：取真实评分≥4.0的电影作为用户真正喜欢的电影
+    high_rated = user_data_test[user_data_test['actual_rating'] >= 4.0]
+    ground_truth_high_rated = high_rated['movie_idx'].values
+    if len(ground_truth_high_rated) == 0:
+        continue
+
+    # 根据预测的评分排序，选取前 K 个推荐的电影
+    top_k_recs = user_data_test.sort_values(by='predicted_rating', ascending=False).head(K)
+    recommended_movies = top_k_recs['movie_idx'].values
+
+    # 计算 Hit@K：如果推荐列表中至少包含一个真实喜欢的电影，则命中1，否则为0
+    hit = 1 if np.intersect1d(recommended_movies, ground_truth_high_rated).size > 0 else 0
+    hit_scores.append(hit)
+
+    # 计算 NDCG@K：调用 ndcg_at_k 函数（需要在 helper.evaluate 中定义或导入）
+    ndcg = ndcg_at_k(recommended_movies, ground_truth_high_rated, K)
+    ndcg_scores.append(ndcg)
+
+# 输出所有用户的平均 HR@K 和 NDCG@K 值
+print(f"\n✅ Sampled HR@{K}: {np.mean(hit_scores):.4f}")
+print(f"✅ Sampled NDCG@{K}: {np.mean(ndcg_scores):.4f}")
 
 # If needed, merge with movies DataFrame.
 # Note: The movies DataFrame still contains the original movieId.
 # You can create a reverse mapping for movie ids if necessary.
 # For simplicity, here we merge on the mapped movieId if movies DataFrame was updated accordingly.
-predictions_df = predictions_df.merge(movies[['movie_idx', 'title']], left_on='movieId', right_on='movie_idx', how='left')
+predictions_df = predictions_df.merge(movies[['movie_idx', 'title']], left_on='movie_idx', right_on='movie_idx', how='left')
 
 print("\n🎬 Preview of Real vs Predicted Ratings:")
-print(predictions_df[['userId', 'title', 'actual_rating', 'predicted_rating']].head(10))
+print(predictions_df[['user_idx', 'title', 'actual_rating', 'predicted_rating']].head(10))
 
 predictions_df.to_pickle("./results/nn_pred_df.pkl")

@@ -19,6 +19,21 @@ movies = pd.read_csv(MOVIES_FILEPATH)
 ratings = pd.read_csv(RATINGS_FILEPATH)
 
 # ------------------------------
+# Map original userId and movieId to new continuous indices
+# ------------------------------
+user_mapper = {old: new for new, old in enumerate(ratings['userId'].unique())}
+movie_mapper = {old: new for new, old in enumerate(ratings['movieId'].unique())}
+
+
+
+# Add mapped indices to the ratings DataFrame
+ratings['user_idx'] = ratings['userId'].map(user_mapper)
+ratings['movie_idx'] = ratings['movieId'].map(movie_mapper)
+
+# Add mapped indices to the movies DataFrame as well
+movies['movie_idx'] = movies['movieId'].map(movie_mapper)
+
+# ------------------------------
 # 1. Define Path for results
 # ------------------------------
 RESULTS_PATH = "./results"
@@ -80,15 +95,27 @@ algo.fit(trainset)
 dump.dump(MODEL_PATH, algo=algo)
 predictions = algo.test(testset)
 
-# Convert predictions to DataFrame
+ #Convert predictions to DataFrame
+#pred_df = pd.DataFrame([{
+   # 'userId': int(pred.uid),
+   # 'movieId': int(pred.iid),
+   # 'rating': pred.r_ui,
+   # 'predicted': round(pred.est * 2) / 2  # Round to nearest 0.5
+
+#} for pred in predictions])
+#pred_df['predicted'] = pred_df['predicted'].clip(0.5, 5.0)
+
+# Convert predictions to DataFrame with mapping to user_idx and movie_idx
 pred_df = pd.DataFrame([{
     'userId': int(pred.uid),
     'movieId': int(pred.iid),
+    'user_idx': user_mapper[int(pred.uid)],   # 根据映射字典获得映射后的 user_idx
+    'movie_idx': movie_mapper[int(pred.iid)],  # 根据映射字典获得映射后的 movie_idx
     'rating': pred.r_ui,
     'predicted': round(pred.est * 2) / 2  # Round to nearest 0.5
-
 } for pred in predictions])
 pred_df['predicted'] = pred_df['predicted'].clip(0.5, 5.0)
+
 
 # Merge prediction with titles and save the df.
 movies_subset = movies.set_index('movieId')
