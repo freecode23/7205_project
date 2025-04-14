@@ -20,8 +20,8 @@ nn_df = pd.read_pickle(NN_PATH).rename(columns={
     })
 
 # Merge all on userId, movieId, and rating
-#merged = cbf_df.merge(svd_df, on=['userId', 'movieId', 'rating'])
-merged = svd_df.merge(nn_df, on=['user_idx', 'movie_idx', 'rating'], how='inner')
+merged = cbf_df.merge(svd_df, on=['user_idx', 'movie_idx', 'rating'])
+merged = merged.merge(nn_df, on=['user_idx', 'movie_idx', 'rating'], how='inner')
 print(len(cbf_df), len(svd_df), len(nn_df), len(merged))
 
 

@@ -30,8 +30,16 @@ RATING_MATRIX_PATH = os.path.join(RESULTS_PATH, "rating_matrix.pkl")
 COS_SIM_PATH = os.path.join(RESULTS_PATH, "cos_sim_df.pkl")
 PRED_PATH = os.path.join(RESULTS_PATH, "content_pred_df.pkl")
 
+# Map original userId and movieId to new continuous indices
+user_mapper = {old: new for new, old in enumerate(ratings['userId'].unique())}
+movie_mapper = {old: new for new, old in enumerate(ratings['movieId'].unique())}
+
+ratings['user_idx'] = ratings['userId'].map(user_mapper)
+ratings['movie_idx'] = ratings['movieId'].map(movie_mapper)
+movies['movie_idx'] = movies['movieId'].map(movie_mapper)
+
 # Build user-movie rating matrix
-rating_matrix = ratings.pivot(index='userId', columns='movieId', values='rating').fillna(0)
+rating_matrix = ratings.pivot(index='user_idx', columns='movie_idx', values='rating').fillna(0)
 rating_matrix.to_pickle(RATING_MATRIX_PATH)
 
 # ------------------------------
@@ -41,7 +49,7 @@ tfidf = TfidfVectorizer(tokenizer=lambda x: x.split('|'))
 tfidf_matrix = tfidf.fit_transform(movies['genres'])
 print("tfidf_matrix:\n", tfidf_matrix)
 cos_sim_matrix = cosine_similarity(tfidf_matrix, tfidf_matrix)
-cos_sim_df = pd.DataFrame(cos_sim_matrix, index=movies['movieId'], columns=movies['movieId'])
+cos_sim_df = pd.DataFrame(cos_sim_matrix, index=movies['movie_idx'], columns=movies['movie_idx'])
 cos_sim_df.to_pickle(COS_SIM_PATH)
 print("cos_sim_df:\n", cos_sim_df)
 
@@ -61,7 +69,7 @@ test_df = pd.read_csv('./results/test.csv')
 
 # Apply get_rating to test set
 test_df['predicted_raw'] = test_df.progress_apply(
-    lambda row: get_rating(row['userId'], row['movieId'], train_df, cos_sim_df),
+    lambda row: get_rating(row['user_idx'], row['movie_idx'], train_df, cos_sim_df),
     axis=1
 )
 
@@ -90,8 +98,8 @@ print(f"✅ MAE (scaled):  {mae_scaled:.4f}")
 # 4. Preview Predictions vs Actual
 # ------------------------------
 # Merge with movie titles for display
-movies_subset = movies.set_index('movieId')
-test_df_clean['title'] = test_df_clean['movieId'].map(movies_subset['title'])
+movies_subset = movies.drop_duplicates(subset='movie_idx').set_index('movie_idx')
+test_df_clean['title'] = test_df_clean['movie_idx'].map(movies_subset['title'])
 
 # Round predicted rating to nearest 0.5 to match SVD-style display
 test_df_clean['predicted'] = (2 * test_df_clean['predicted']).round() / 2
@@ -101,7 +109,7 @@ test_df_clean['predicted'] = test_df_clean['predicted'].clip(0.5, 5.0)
 test_df_clean.to_pickle(PRED_PATH)
 
 # Preview first few predictions
-preview = test_df_clean[['userId', 'title', 'rating', 'predicted']].head(10)
+preview = test_df_clean[['user_idx', 'title', 'rating', 'predicted']].head(10)
 
 print("\n🎬 Preview of Real vs Predicted Ratings (Content-Based):")
 print(preview.to_string(index=False))
