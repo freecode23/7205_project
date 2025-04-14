@@ -16,14 +16,14 @@ tqdm.pandas()
 RESULTS_PATH = "./results"
 RATINGS_FILEPATH = './IMDB-Dataset/ratings.csv'
 PRED_PATH = os.path.join(RESULTS_PATH, "content_pred_df.pkl")
-# PRED_PATH = os.path.join(RESULTS_PATH, "svd_pred_df.pkl")
+PRED_PATH = os.path.join(RESULTS_PATH, "svd_pred_df.pkl")
 K=10
 
 # ------------------------------
 # 2. Get test df, all movie ids, and user ids.
 # ------------------------------
 test_df = pd.read_pickle(PRED_PATH)
-
+print("test_df", test_df)
 ratings = pd.read_csv(RATINGS_FILEPATH)
 all_movie_ids = set(ratings['movieId'].unique())
 

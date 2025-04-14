@@ -29,18 +29,22 @@ MODEL_PATH = os.path.join(RESULTS_PATH, "svd_model.pkl")
 # ------------------------------
 # 2. Prepare data for Surprise
 # ------------------------------
-# Split trainset and testset.
+# 1. Split trainset and testset.
 print("Split trainset and testset..")
 train_df = ratings.sample(frac=0.8, random_state=42)
 test_df = ratings.drop(train_df.index)
 
-# Convert to dataset for GridSearch
+# 2. Save it for all models
+train_df.to_csv('./results/train.csv', index=False)
+test_df.to_csv('./results/test.csv', index=False)
+
+# 3. Convert to dataset for GridSearch
 print("Convert to Dataset..")
 reader = Reader(rating_scale=(0.5, 5.0))
 train_data = Dataset.load_from_df(train_df[['userId', 'movieId', 'rating']], reader)
 test_data = Dataset.load_from_df(test_df[['userId', 'movieId', 'rating']], reader)
 
-# Convert to Surprise train and testsest
+# 4. Convert to Surprise train and testsest
 print("Convert to Surprise train and testset..")
 trainset = train_data.build_full_trainset()
 testset = list(zip(test_df['userId'], test_df['movieId'], test_df['rating']))
@@ -94,3 +98,5 @@ pred_df.to_pickle(SVD_PRED_PATH)
 # Show first few predictions.
 print("\n🎬 Preview of Real vs Predicted Ratings:")
 print(pred_df[['userId', 'title', 'rating', 'predicted']].head(10))
+previewUser = pred_df[pred_df['userId'] == 33]
+print(previewUser)

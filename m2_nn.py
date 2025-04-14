@@ -26,22 +26,29 @@ ratings['movie_idx'] = ratings['movieId'].map(movie_mapper)
 # **Add mapped indices to the movies DataFrame as well**
 movies['movie_idx'] = movies['movieId'].map(movie_mapper)
 
-# Preprocessing the data using mapped indices
-user_ids = ratings['user_idx'].values
-movie_ids = ratings['movie_idx'].values
-ratings_values = ratings['rating'].values
+# Load the pre-saved split
+train_df = pd.read_csv('./results/train.csv')
+test_df = pd.read_csv('./results/test.csv')
 
-# Get number of unique users and movies after mapping
+# Apply same user/movie mapping
+train_df['user_idx'] = train_df['userId'].map(user_mapper)
+train_df['movie_idx'] = train_df['movieId'].map(movie_mapper)
+test_df['user_idx'] = test_df['userId'].map(user_mapper)
+test_df['movie_idx'] = test_df['movieId'].map(movie_mapper)
+
+# Normalize ratings to 0–1
+train_df['rating_norm'] = train_df['rating'] / 5.0
+test_df['rating_norm'] = test_df['rating'] / 5.0
+
+# Define training and test data
+X_train = list(zip(train_df['user_idx'], train_df['movie_idx']))
+y_train = train_df['rating_norm'].values
+
+X_test = list(zip(test_df['user_idx'], test_df['movie_idx']))
+y_test = test_df['rating_norm'].values
+
 num_users = ratings['user_idx'].nunique()
 num_movies = ratings['movie_idx'].nunique()
-
-# Normalize the ratings to [0, 1]
-ratings_values = ratings_values / 5.0
-
-# Split data into train and test sets (80-20 split)
-X_train, X_test, y_train, y_test = train_test_split(
-    list(zip(user_ids, movie_ids)), ratings_values, test_size=0.2, random_state=42
-)
 
 # Define the Neural Network model
 embedding_size = 50  # Size of the embeddings for users and movies

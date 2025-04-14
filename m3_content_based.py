@@ -10,8 +10,7 @@ from sklearn.metrics import root_mean_squared_error, mean_absolute_error
 from helper.evaluate import get_rating
 
 # For train test split.
-from surprise.model_selection import train_test_split
-from surprise import Dataset, Reader
+from surprise import Reader
 
 # ------------------------------
 # 0. Load movie data and user rating data
@@ -40,9 +39,11 @@ rating_matrix.to_pickle(RATING_MATRIX_PATH)
 # ------------------------------
 tfidf = TfidfVectorizer(tokenizer=lambda x: x.split('|'))
 tfidf_matrix = tfidf.fit_transform(movies['genres'])
+print("tfidf_matrix:\n", tfidf_matrix)
 cos_sim_matrix = cosine_similarity(tfidf_matrix, tfidf_matrix)
 cos_sim_df = pd.DataFrame(cos_sim_matrix, index=movies['movieId'], columns=movies['movieId'])
 cos_sim_df.to_pickle(COS_SIM_PATH)
+print("cos_sim_df:\n", cos_sim_df)
 
 
 # ------------------------------
@@ -54,15 +55,9 @@ reader = Reader(rating_scale=(0.5, 5.0))
 ratings_clean = ratings.dropna(subset=['rating'])
 ratings_clean = ratings_clean[ratings_clean['rating'] > 0]
 
-# Then pass to Surprise
-data = Dataset.load_from_df(ratings_clean[['userId', 'movieId', 'rating']], reader)
-trainset, testset = train_test_split(data, test_size=0.2, random_state=42)
-
-# Convert trainset to a DataFrame for use in get_rating
-train_df = pd.DataFrame(trainset.build_testset(), columns=['userId', 'movieId', 'rating'])
-
-# Create a DataFrame version of the testset
-test_df = pd.DataFrame(testset, columns=['userId', 'movieId', 'rating'])
+# Load pre-saved splits
+train_df = pd.read_csv('./results/train.csv')
+test_df = pd.read_csv('./results/test.csv')
 
 # Apply get_rating to test set
 test_df['predicted_raw'] = test_df.progress_apply(
@@ -72,6 +67,9 @@ test_df['predicted_raw'] = test_df.progress_apply(
 
 # Drop predictions that couldn't be made.
 test_df_clean = test_df.dropna(subset=['predicted_raw'])
+
+num_na = test_df['predicted_raw'].isna().sum()
+print(f"Number of NaN values in 'predicted_raw': {num_na}")
 
 # ------------------------------
 # 4. Rescales predictions from 0-1 to match 1.0–5.0 rating scale
@@ -107,4 +105,5 @@ preview = test_df_clean[['userId', 'title', 'rating', 'predicted']].head(10)
 
 print("\n🎬 Preview of Real vs Predicted Ratings (Content-Based):")
 print(preview.to_string(index=False))
+
 
